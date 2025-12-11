@@ -56,29 +56,40 @@
                 遊戲準備中...
             </p>
 
-            <!-- 新增: 開始畫面 -->
-            <div id="start-screen" class="hidden p-10">
-                <p class="text-2xl md:text-3xl text-gray-700 mb-10 font-medium">
-                    準備好挑戰 1-9 乘數表了嗎？
+            <!-- 開始畫面：新增模式選擇 -->
+            <div id="start-screen" class="hidden p-6 md:p-10">
+                <p class="text-2xl md:text-3xl text-gray-700 mb-6 font-medium">
+                    請選擇測驗模式：
                 </p>
-                <button id="start-button" onclick="startGame()" class="w-full py-6 px-4 text-3xl font-bold rounded-xl bg-green-600 text-white shadow-lg hover:bg-green-700 transition duration-150 submit-button">
-                    開始測驗
-                </button>
+                <div class="flex flex-col space-y-4 mb-8">
+                    <button onclick="setModeAndStart('standard')" class="w-full py-4 px-4 text-xl font-bold rounded-xl bg-blue-500 text-white shadow-lg hover:bg-blue-600 transition duration-150 submit-button">
+                        測驗一: A × B = ? (填寫乘積)
+                    </button>
+                    <button onclick="setModeAndStart('inverse')" class="w-full py-4 px-4 text-xl font-bold rounded-xl bg-purple-500 text-white shadow-lg hover:bg-purple-600 transition duration-150 submit-button">
+                        測驗二: A × __ = C (填寫缺失乘數)
+                    </button>
+                </div>
             </div>
             
-            <p id="question-text" class="hidden text-6xl md:text-8xl font-bold text-green-800 my-8">
+            <!-- 調整字體大小，提高單行顯示率 -->
+            <p id="question-text" class="hidden text-5xl md:text-7xl font-bold text-green-800 my-8">
                 3 × 5 = ?
             </p>
         </div>
 
         <!-- 輸入和提交區 -->
         <div id="input-area" class="flex flex-col items-center space-y-4 hidden">
-            <input type="number" id="answer-input" placeholder="請輸入答案" min="1" max="81"
-                   class="answer-input w-full text-center text-3xl p-4 border-4 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition duration-150">
-            <button id="submit-button" onclick="submitAnswer()"
-                    class="submit-button w-full py-4 px-4 text-2xl font-bold rounded-xl bg-indigo-500 text-white shadow-lg hover:bg-indigo-600 transition duration-150">
-                確定答案 (Enter 鍵)
-            </button>
+            <!-- 使用 form 元素提升結構，並通過 onsubmit="return false;" 防止傳統提交 -->
+            <form id="quiz-form" onsubmit="return false;" class="w-full">
+                <!-- 調整 min/max 屬性，但實際檢查在 JS 中進行 -->
+                <input type="number" id="answer-input" placeholder="請輸入答案" min="1" max="81"
+                       class="answer-input w-full text-center text-3xl p-4 border-4 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition duration-150">
+                <!-- 設置 type="button" 確保不會觸發原生 form 提交 -->
+                <button type="button" id="submit-button" onclick="submitAnswer()"
+                        class="submit-button w-full py-4 px-4 text-2xl font-bold rounded-xl bg-indigo-500 text-white shadow-lg hover:bg-indigo-600 transition duration-150 mt-4">
+                    確定答案 (Enter 鍵)
+                </button>
+            </form>
         </div>
 
         <!-- 即時反饋區 -->
@@ -98,8 +109,9 @@
                     <!-- Table will be injected here -->
                 </div>
 
-                <button onclick="startGame()" class="w-full py-3 px-4 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 transition duration-150 submit-button">
-                    再玩一次！
+                <!-- 將 'startGame()' 改為 'showStartScreen()' 讓使用者重新選擇模式 -->
+                <button onclick="showStartScreen()" class="w-full py-3 px-4 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 transition duration-150 submit-button">
+                    再玩一次！ (選擇模式)
                 </button>
             </div>
         </div>
@@ -113,9 +125,11 @@
         let questionCount = 0;
         let roundResults = []; // 儲存本回合每題的詳細結果
         let startTime = 0; // 儲存每題開始時間 (使用 performance.now())
+        let quizMode = 'standard'; // 'standard' (A x B = ?) or 'inverse' (A x ? = C)
 
         const totalQuestionsPerRound = 10;
-        const answerRange = 9 * 9; // 最大答案 81
+        const maxProduct = 9 * 9; // 最大乘積 81
+        const maxFactor = 9; // 最大缺失乘數 9
         const localStorageKey = 'multiplication_quiz_history';
 
         // --- 輔助函數 ---
@@ -132,8 +146,39 @@
         function generateQuestion() {
             const num1 = Math.floor(Math.random() * 9) + 1; // 1 to 9
             const num2 = Math.floor(Math.random() * 9) + 1; // 1 to 9
-            const answer = num1 * num2;
-            return { num1, num2, answer };
+            const product = num1 * num2;
+            
+            if (quizMode === 'standard') {
+                return { 
+                    num1, 
+                    num2, 
+                    answer: product, 
+                    questionFormat: 'standard' 
+                };
+            } else { // 'inverse' mode (A x ? = C)
+                // 決定隱藏 num1 還是 num2
+                const maskFirst = Math.random() < 0.5;
+
+                if (maskFirst) {
+                    // ? x B = C. The expected answer is num1.
+                    return { 
+                        num1: null, // 隱藏的乘數
+                        num2: num2, 
+                        answer: num1, // 正確答案 (缺失的乘數)
+                        product: product, 
+                        questionFormat: 'inverse' 
+                    };
+                } else {
+                    // A x ? = C. The expected answer is num2.
+                    return { 
+                        num1: num1, 
+                        num2: null, // 隱藏的乘數
+                        answer: num2, // 正確答案 (缺失的乘數)
+                        product: product, 
+                        questionFormat: 'inverse' 
+                    };
+                }
+            }
         }
 
         /**
@@ -147,12 +192,16 @@
             const isCorrect = selectedAnswer === currentQuestion.answer;
             
             questionCount++;
+            
+            // 使用 '_' 作為佔位符
+            const questionString = currentQuestion.questionFormat === 'standard' 
+                ? `${currentQuestion.num1} × ${currentQuestion.num2} = ?`
+                : `${currentQuestion.num1 === null ? '_' : currentQuestion.num1} × ${currentQuestion.num2 === null ? '_' : currentQuestion.num2} = ${currentQuestion.product}`;
+
 
             // 儲存詳細結果
             roundResults.push({
-                num1: currentQuestion.num1,
-                num2: currentQuestion.num2,
-                question: `${currentQuestion.num1} × ${currentQuestion.num2}`,
+                question: questionString,
                 userAnswer: selectedAnswer,
                 correctAnswer: currentQuestion.answer,
                 isCorrect: isCorrect,
@@ -206,10 +255,19 @@
                 return;
             }
 
-            // 基本驗證
+            // 1. 基礎驗證: 檢查是否為空或非數字
             if (inputValue === "" || isNaN(selectedAnswer)) {
-                // 不使用 alert(), 而是更新反饋訊息
                 document.getElementById('feedback-message').textContent = "請輸入一個有效的數字！";
+                inputElement.focus();
+                return;
+            }
+            
+            let minRange = 1;
+            let maxRange = quizMode === 'standard' ? maxProduct : maxFactor;
+
+            // 2. 範圍驗證: 顯式檢查數字是否在正確範圍內
+            if (selectedAnswer < minRange || selectedAnswer > maxRange) {
+                document.getElementById('feedback-message').textContent = `請輸入 ${minRange} 到 ${maxRange} 之間的答案！`;
                 inputElement.focus();
                 return;
             }
@@ -243,8 +301,18 @@
             document.getElementById('current-question-count').textContent = questionCount + 1;
             document.getElementById('current-score').textContent = score;
             
-            // Display question
-            questionTextElement.textContent = `${currentQuestion.num1} × ${currentQuestion.num2} = ?`;
+            // Display question based on mode
+            if (currentQuestion.questionFormat === 'standard') {
+                questionTextElement.textContent = `${currentQuestion.num1} × ${currentQuestion.num2} = ?`;
+                inputElement.setAttribute('max', maxProduct); // 調整輸入框最大值提示
+            } else {
+                // 使用 '_' 作為佔位符
+                const factor1 = currentQuestion.num1 === null ? '_' : currentQuestion.num1;
+                const factor2 = currentQuestion.num2 === null ? '_' : currentQuestion.num2;
+                const product = currentQuestion.product;
+                questionTextElement.textContent = `${factor1} × ${factor2} = ${product}`;
+                inputElement.setAttribute('max', maxFactor); // 調整輸入框最大值提示
+            }
             questionTextElement.classList.remove('hidden');
 
             // Clear and focus input
@@ -273,13 +341,10 @@
             };
             
             history.unshift(newEntry); // 將新紀錄放在最前面
-            // 只保留最近 5 筆紀錄
-            const historyToSave = history.slice(0, 5); 
+            const historyToSave = history.slice(0, 5); // 只保留最近 5 筆紀錄
             
             try {
                 localStorage.setItem(localStorageKey, JSON.stringify(historyToSave));
-                // 註釋掉 console.log 以保持簡潔
-                // console.log("回合結果已成功保存到 LocalStorage。");
             } catch (error) {
                 console.error("保存結果到 LocalStorage 失敗: ", error);
             }
@@ -371,23 +436,47 @@
             saveRoundResultLocal(finalScore);
         }
 
+        /**
+         * 顯示開始畫面 (從總結或初始化調用)
+         */
+        window.showStartScreen = function() {
+            document.getElementById('summary-modal').classList.add('hidden');
+            document.getElementById('question-text').classList.add('hidden');
+            document.getElementById('input-area').classList.add('hidden');
+            document.getElementById('loading-message').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+            document.getElementById('current-question-count').textContent = '0';
+            document.getElementById('current-score').textContent = '0';
+        }
+
+        /**
+         * 設置模式並開始遊戲
+         * @param {string} mode 'standard' or 'inverse'
+         */
+        window.setModeAndStart = function(mode) {
+            quizMode = mode;
+            startGame();
+        }
 
         /**
          * 初始化遊戲狀態並開始新一輪 (由按鈕觸發)
          */
-        window.startGame = function() {
+        function startGame() {
             score = 0;
             questionCount = 0;
             roundResults = []; // 重置詳細結果
             document.getElementById('feedback-message').textContent = '';
             document.getElementById('summary-modal').classList.add('hidden');
             
-            // 新增: 隱藏開始畫面
+            // 隱藏開始畫面
             document.getElementById('start-screen').classList.add('hidden');
 
             // 確保問題和輸入區域顯示
             document.getElementById('question-text').classList.remove('hidden');
             document.getElementById('input-area').classList.remove('hidden');
+            
+            // 確保輸入框的 max 屬性正確初始化 (standard=81, inverse=9)
+            document.getElementById('answer-input').setAttribute('max', quizMode === 'standard' ? maxProduct : maxFactor);
             
             displayQuestion();
         }
@@ -396,9 +485,9 @@
          * 應用程式初始化
          */
         function initApp() {
-            // 隱藏載入訊息，顯示開始按鈕
+            // 隱藏載入訊息，顯示開始畫面
             document.getElementById('loading-message').classList.add('hidden');
-            document.getElementById('start-screen').classList.remove('hidden');
+            showStartScreen(); // 顯示模式選擇畫面
             
             // 增加 Enter 鍵提交事件監聽器
             document.getElementById('answer-input').addEventListener('keypress', function (e) {
