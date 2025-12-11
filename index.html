@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乘數表填答模式 (本地儲存)</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Noto Sans 讓中文字體更美觀 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 使用 Inter 和 Noto Sans TC 確保中英文字體協調 */
+        body {
+            font-family: 'Noto Sans TC', 'Inter', sans-serif;
+            background-color: #f0fdf4; /* 淺綠色背景 */
+        }
+        .quiz-card {
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            border: 4px solid #10b981; /* 綠色邊框 */
+            transition: all 0.3s ease;
+        }
+        .answer-input {
+            transition: border-color 0.15s, background-color 0.15s;
+            /* 隱藏輸入框的上下箭頭 */
+            -moz-appearance: textfield;
+        }
+        .answer-input::-webkit-outer-spin-button,
+        .answer-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .submit-button:active {
+            transform: scale(0.98);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- 主測驗卡片 -->
+    <div id="quiz-container" class="quiz-card w-full max-w-xl bg-white rounded-xl p-6 md:p-10 text-center">
+        
+        <h1 class="text-3xl md:text-4xl font-extrabold text-green-600 mb-4">
+            乘數表小學堂 (1-9)
+        </h1>
+        <!-- 移除使用者 ID 顯示 -->
+
+        <!-- 狀態顯示區 -->
+        <div class="flex justify-between items-center mb-6 text-lg font-semibold text-gray-700 p-3 bg-green-50 rounded-lg">
+            <span>第 <span id="current-question-count">0</span> / 10 題</span>
+            <span>得分: <span id="current-score">0</span></span>
+        </div>
+
+        <!-- 問題區 -->
+        <div id="question-area" class="mb-8">
+            <p id="loading-message" class="text-xl text-green-500">
+                遊戲準備中...
+            </p>
+            <p id="question-text" class="hidden text-6xl md:text-8xl font-bold text-green-800 my-8">
+                3 × 5 = ?
+            </p>
+        </div>
+
+        <!-- 輸入和提交區 -->
+        <div id="input-area" class="flex flex-col items-center space-y-4 hidden">
+            <input type="number" id="answer-input" placeholder="請輸入答案" min="1" max="81"
+                   class="answer-input w-full text-center text-3xl p-4 border-4 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition duration-150">
+            <button id="submit-button" onclick="submitAnswer()"
+                    class="submit-button w-full py-4 px-4 text-2xl font-bold rounded-xl bg-indigo-500 text-white shadow-lg hover:bg-indigo-600 transition duration-150">
+                確定答案 (Enter 鍵)
+            </button>
+        </div>
+
+        <!-- 即時反饋區 -->
+        <div id="feedback-message" class="mt-8 h-8 text-2xl font-bold">
+            <!-- 反饋訊息會顯示在這裡 -->
+        </div>
+        
+        <!-- 總結/重新開始區 -->
+        <div id="summary-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div class="bg-yellow-100 border-4 border-yellow-500 rounded-xl p-8 max-w-2xl w-full text-center quiz-card">
+                <h2 id="summary-title" class="text-3xl font-bold text-yellow-700 mb-4"></h2>
+                <p id="summary-score" class="text-5xl font-extrabold text-yellow-900 mb-6"></p>
+
+                <!-- 新增詳細結果表格區 -->
+                <h3 class="text-xl font-bold text-yellow-700 mt-4 mb-2 border-t pt-4">本次測驗詳細結果</h3>
+                <!-- 移除 h-64 和 overflow-y-auto，讓表格完全展開 -->
+                <div id="detailed-results-table" class="bg-white p-3 rounded mb-6 border border-yellow-300 shadow-inner">
+                    <!-- Table will be injected here -->
+                </div>
+
+                <!-- 歷史紀錄區塊已移除 -->
+
+                <button onclick="startGame()" class="w-full py-3 px-4 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 transition duration-150 submit-button">
+                    再玩一次！
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 全域變數/狀態 ---
+        let currentQuestion = {};
+        let score = 0;
+        let questionCount = 0;
+        let roundResults = []; // 儲存本回合每題的詳細結果
+        let startTime = 0; // 儲存每題開始時間 (使用 performance.now())
+
+        const totalQuestionsPerRound = 10;
+        const answerRange = 9 * 9; // 最大答案 81
+        const localStorageKey = 'multiplication_quiz_history';
+
+        // --- 輔助函數 ---
+
+        /**
+         * 延遲函數
+         * @param {number} ms 毫秒數
+         */
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        /**
+         * 產生隨機的乘數表問題 (1x1 到 9x9)
+         */
+        function generateQuestion() {
+            const num1 = Math.floor(Math.random() * 9) + 1; // 1 to 9
+            const num2 = Math.floor(Math.random() * 9) + 1; // 1 to 9
+            const answer = num1 * num2;
+            return { num1, num2, answer };
+        }
+
+        /**
+         * 檢查答案
+         */
+        async function checkAnswer(selectedAnswer, inputElement, submitButton) {
+            const endTime = performance.now();
+            const timeTaken = (endTime - startTime) / 1000; // 用時 (秒)
+            
+            const feedbackElement = document.getElementById('feedback-message');
+            const isCorrect = selectedAnswer === currentQuestion.answer;
+            
+            questionCount++;
+
+            // 儲存詳細結果
+            roundResults.push({
+                num1: currentQuestion.num1,
+                num2: currentQuestion.num2,
+                question: `${currentQuestion.num1} × ${currentQuestion.num2}`,
+                userAnswer: selectedAnswer,
+                correctAnswer: currentQuestion.answer,
+                isCorrect: isCorrect,
+                timeTaken: timeTaken.toFixed(2) // 儲存為字串，保留兩位小數
+            });
+
+            if (isCorrect) {
+                score++;
+                feedbackElement.textContent = `答對了！👍 (${currentQuestion.answer})`;
+                // 視覺回饋：變綠
+                inputElement.classList.remove('border-indigo-300', 'border-red-500', 'focus:border-indigo-500');
+                inputElement.classList.add('border-green-500', 'bg-green-50');
+            } else {
+                feedbackElement.textContent = `答錯了... 😥 正確答案是 ${currentQuestion.answer}，您輸入了 ${selectedAnswer}。`;
+                // 視覺回饋：變紅
+                inputElement.classList.remove('border-indigo-300', 'border-green-500', 'focus:border-indigo-500');
+                inputElement.classList.add('border-red-500', 'bg-red-50');
+            }
+
+            document.getElementById('current-score').textContent = score;
+            document.getElementById('current-question-count').textContent = questionCount;
+
+            // 延遲 1.5 秒後進入下一題或顯示總結
+            await delay(1500);
+
+            // 清理狀態
+            inputElement.classList.remove('border-green-500', 'bg-green-50', 'border-red-500', 'bg-red-50');
+            inputElement.classList.add('border-indigo-300', 'focus:border-indigo-500');
+            inputElement.value = '';
+            
+            inputElement.disabled = false;
+            submitButton.disabled = false;
+            submitButton.classList.remove('opacity-50');
+            
+            // 進入下一題或總結
+            displayQuestion();
+        }
+
+        /**
+         * 處理答案提交 (由按鈕或 Enter 鍵觸發)
+         */
+        window.submitAnswer = function() {
+            const inputElement = document.getElementById('answer-input');
+            const submitButton = document.getElementById('submit-button');
+            const inputValue = inputElement.value.trim();
+            const selectedAnswer = parseInt(inputValue);
+
+            // 檢查是否已達到回合限制
+            if (questionCount >= totalQuestionsPerRound) {
+                showSummary();
+                return;
+            }
+
+            // 基本驗證
+            if (inputValue === "" || isNaN(selectedAnswer)) {
+                // 不使用 alert(), 而是更新反饋訊息
+                document.getElementById('feedback-message').textContent = "請輸入一個有效的數字！";
+                inputElement.focus();
+                return;
+            }
+            
+            // 禁用輸入和按鈕 while checking
+            inputElement.disabled = true;
+            submitButton.disabled = true;
+            submitButton.classList.add('opacity-50');
+
+            // 呼叫核心檢查邏輯
+            checkAnswer(selectedAnswer, inputElement, submitButton);
+        };
+
+        /**
+         * 顯示問題到 UI 上
+         */
+        function displayQuestion() {
+            if (questionCount >= totalQuestionsPerRound) {
+                showSummary();
+                return;
+            }
+            
+            currentQuestion = generateQuestion();
+
+            const questionTextElement = document.getElementById('question-text');
+            const inputElement = document.getElementById('answer-input');
+            const submitButton = document.getElementById('submit-button');
+            const feedbackElement = document.getElementById('feedback-message');
+
+            // Update counter
+            document.getElementById('current-question-count').textContent = questionCount + 1;
+            document.getElementById('current-score').textContent = score;
+            
+            // Display question
+            questionTextElement.textContent = `${currentQuestion.num1} × ${currentQuestion.num2} = ?`;
+            questionTextElement.classList.remove('hidden');
+
+            // Clear and focus input
+            inputElement.value = '';
+            inputElement.disabled = false;
+            submitButton.disabled = false;
+            submitButton.classList.remove('opacity-50');
+            inputElement.focus();
+            
+            feedbackElement.textContent = ''; // Clear feedback
+
+            // 啟動計時 (僅記錄開始時間)
+            startTime = performance.now();
+        }
+
+        /**
+         * 儲存回合總結到 LocalStorage
+         */
+        function saveRoundResultLocal(finalScore) {
+            const history = loadRoundHistoryLocal();
+            const newEntry = {
+                score: finalScore,
+                total: totalQuestionsPerRound,
+                percentage: (finalScore / totalQuestionsPerRound) * 100,
+                timestamp: Date.now() 
+            };
+            
+            history.unshift(newEntry); // 將新紀錄放在最前面
+            // 只保留最近 5 筆紀錄
+            const historyToSave = history.slice(0, 5); 
+            
+            try {
+                localStorage.setItem(localStorageKey, JSON.stringify(historyToSave));
+                console.log("回合結果已成功保存到 LocalStorage。");
+            } catch (error) {
+                console.error("保存結果到 LocalStorage 失敗: ", error);
+            }
+        }
+
+        /**
+         * 從 LocalStorage 載入回合總結
+         * 儘管不再顯示，但儲存邏輯仍需要此函數。
+         */
+        function loadRoundHistoryLocal() {
+            try {
+                const storedHistory = localStorage.getItem(localStorageKey);
+                return storedHistory ? JSON.parse(storedHistory) : [];
+            } catch (error) {
+                console.error("載入 LocalStorage 歷史紀錄失敗:", error);
+                return [];
+            }
+        }
+        
+        // displayLocalHistory() 函數已移除，因為用戶要求取消該欄位。
+
+
+        /**
+         * 顯示回合總結並保存結果
+         */
+        async function showSummary() {
+            const finalScore = score;
+            const percentage = (finalScore / totalQuestionsPerRound) * 100;
+            
+            // 隱藏問題區域
+            document.getElementById('question-text').classList.add('hidden');
+            document.getElementById('input-area').classList.add('hidden');
+            document.getElementById('feedback-message').textContent = '';
+
+            // 顯示總結 modal
+            document.getElementById('summary-modal').classList.remove('hidden');
+
+            const titleElement = document.getElementById('summary-title');
+            const scoreElement = document.getElementById('summary-score');
+
+            if (percentage === 100) {
+                titleElement.textContent = "太棒了！滿分！🥳";
+                scoreElement.textContent = `${finalScore}/${totalQuestionsPerRound}`;
+            } else if (percentage >= 80) {
+                titleElement.textContent = "做得很好！👏";
+                scoreElement.textContent = `${finalScore}/${totalQuestionsPerRound}`;
+            } else {
+                titleElement.textContent = "繼續努力喔！💪";
+                scoreElement.textContent = `${finalScore}/${totalQuestionsPerRound}`;
+            }
+
+            // --- 產生詳細結果表格 ---
+            const tableContainer = document.getElementById('detailed-results-table');
+            let tableHTML = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr class="bg-yellow-200">
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">#</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">題目</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">作答</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">正解</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">結果</th>
+                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">用時(秒)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+            `;
+            
+            roundResults.forEach((result, index) => {
+                const resultText = result.isCorrect ? '✔ 啱' : '❌ 錯';
+                const resultClass = result.isCorrect ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
+                
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">${index + 1}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${result.question}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-700">${result.userAnswer}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-700">${result.correctAnswer}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm ${resultClass}">${resultText}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right font-mono text-gray-800">${result.timeTaken}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+            tableContainer.innerHTML = tableHTML;
+            // --- 產生詳細結果表格結束 ---
+
+            // 保存總分到 LocalStorage
+            saveRoundResultLocal(finalScore);
+        }
+
+
+        /**
+         * 初始化遊戲狀態並開始新一輪
+         */
+        window.startGame = function() {
+            score = 0;
+            questionCount = 0;
+            roundResults = []; // 重置詳細結果
+            document.getElementById('feedback-message').textContent = '';
+            document.getElementById('summary-modal').classList.add('hidden');
+            document.getElementById('loading-message').classList.add('hidden');
+            
+            // 確保問題和輸入區域顯示
+            document.getElementById('question-text').classList.remove('hidden');
+            document.getElementById('input-area').classList.remove('hidden');
+            
+            displayQuestion();
+        }
+
+        /**
+         * 應用程式初始化
+         */
+        function initApp() {
+            document.getElementById('loading-message').textContent = "遊戲準備中！";
+            
+            // 增加 Enter 鍵提交事件監聽器
+            document.getElementById('answer-input').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); 
+                    window.submitAnswer();
+                }
+            });
+            
+            // 延遲開始遊戲
+            setTimeout(startGame, 500);
+        }
+
+        // 頁面載入完成後開始初始化
+        window.onload = initApp;
+
+    </script>
+</body>
+</html>
