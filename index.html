@@ -33,6 +33,19 @@
             transform: scale(0.98);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
+        
+        /* === 優化 1-9 答案按鈕樣式 === */
+        .answer-btn {
+            /* 加大尺寸 (py-8, text-4xl) */
+            /* 增加陰影，使用更飽和的顏色 */
+            @apply py-8 text-4xl font-extrabold rounded-2xl bg-indigo-600 text-white shadow-2xl shadow-indigo-500/50 hover:bg-indigo-700 transition duration-150;
+            /* 自定義按壓效果 */
+            transition: transform 0.1s, box-shadow 0.1s, background-color 0.15s;
+        }
+        .answer-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
@@ -66,7 +79,7 @@
                         測驗一: A × B = ? (填寫乘積)
                     </button>
                     <button onclick="setModeAndStart('inverse')" class="w-full py-4 px-4 text-xl font-bold rounded-xl bg-purple-500 text-white shadow-lg hover:bg-purple-600 transition duration-150 submit-button">
-                        測驗二: A × __ = C (填寫缺失乘數)
+                        測驗二: A × __ = C (填寫缺失乘數 - 1-9按鈕)
                     </button>
                 </div>
             </div>
@@ -79,17 +92,27 @@
 
         <!-- 輸入和提交區 -->
         <div id="input-area" class="flex flex-col items-center space-y-4 hidden">
-            <!-- 使用 form 元素提升結構，並通過 onsubmit="return false;" 防止傳統提交 -->
-            <form id="quiz-form" onsubmit="return false;" class="w-full">
-                <!-- 調整 min/max 屬性，但實際檢查在 JS 中進行 -->
-                <input type="number" id="answer-input" placeholder="請輸入答案" min="1" max="81"
-                       class="answer-input w-full text-center text-3xl p-4 border-4 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition duration-150">
-                <!-- 設置 type="button" 確保不會觸發原生 form 提交 -->
-                <button type="button" id="submit-button" onclick="submitAnswer()"
-                        class="submit-button w-full py-4 px-4 text-2xl font-bold rounded-xl bg-indigo-500 text-white shadow-lg hover:bg-indigo-600 transition duration-150 mt-4">
-                    確定答案 (Enter 鍵)
-                </button>
-            </form>
+            
+            <!-- 模式切換區塊 -->
+            <div id="answer-mode-container" class="w-full">
+                
+                <!-- 1. 數字按鈕模式 (用於 Inverse 模式) -->
+                <!-- 增加 gap-8 讓按鈕間距更大 -->
+                <div id="button-mode" class="hidden grid grid-cols-3 gap-8">
+                    <!-- 按鈕將由 JS 動態生成 -->
+                </div>
+                
+                <!-- 2. 輸入框模式 (用於 Standard 模式或 fallback) -->
+                <form id="input-mode" onsubmit="return false;" class="w-full hidden">
+                    <input type="number" id="answer-input" placeholder="請輸入答案" min="1" max="81"
+                           class="answer-input w-full text-center text-3xl p-4 border-4 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition duration-150">
+                    <button type="button" id="submit-button" onclick="submitInputAnswer()"
+                            class="submit-button w-full py-4 px-4 text-2xl font-bold rounded-xl bg-indigo-500 text-white shadow-lg hover:bg-indigo-600 transition duration-150 mt-4">
+                        確定答案 (Enter 鍵)
+                    </button>
+                </form>
+
+            </div>
         </div>
 
         <!-- 即時反饋區 -->
@@ -181,10 +204,74 @@
             }
         }
 
+        // --- 答案提交邏輯 (分離為兩個函數) ---
+
         /**
-         * 檢查答案
+         * 處理按鈕模式的答案提交
+         * @param {number} selectedAnswer 點擊的按鈕值 (1-9)
          */
-        async function checkAnswer(selectedAnswer, inputElement, submitButton) {
+        window.submitButtonAnswer = function(selectedAnswer) {
+            // 由於按鈕本身就是 1-9，我們只需要檢查回合限制
+            if (questionCount >= totalQuestionsPerRound) {
+                showSummary();
+                return;
+            }
+            
+            const buttonContainer = document.getElementById('button-mode');
+            const feedbackElement = document.getElementById('feedback-message');
+            
+            // 禁用所有按鈕
+            Array.from(buttonContainer.children).forEach(btn => btn.disabled = true);
+            feedbackElement.textContent = '檢查中...';
+
+            checkAnswer(selectedAnswer, null, buttonContainer); // 傳遞 buttonContainer 作為 uiContainer 替代
+        }
+
+        /**
+         * 處理輸入框模式的答案提交 (原 submitAnswer)
+         */
+        window.submitInputAnswer = function() {
+            const inputElement = document.getElementById('answer-input');
+            const submitButton = document.getElementById('submit-button');
+            const inputValue = inputElement.value.trim();
+            const selectedAnswer = parseInt(inputValue);
+
+            // 檢查是否已達到回合限制
+            if (questionCount >= totalQuestionsPerRound) {
+                showSummary();
+                return;
+            }
+
+            // 1. 基礎驗證: 檢查是否為空或非數字
+            if (inputValue === "" || isNaN(selectedAnswer)) {
+                document.getElementById('feedback-message').textContent = "請輸入一個有效的數字！";
+                inputElement.focus();
+                return;
+            }
+            
+            // 2. 範圍驗證: 標準模式下答案範圍是 1 到 81
+            if (selectedAnswer < 1 || selectedAnswer > maxProduct) {
+                document.getElementById('feedback-message').textContent = `請輸入 1 到 ${maxProduct} 之間的答案！`;
+                inputElement.focus();
+                return;
+            }
+            
+            // 禁用輸入和按鈕 while checking
+            inputElement.disabled = true;
+            submitButton.disabled = true;
+            submitButton.classList.add('opacity-50');
+
+            // 呼叫核心檢查邏輯
+            checkAnswer(selectedAnswer, inputElement, submitButton);
+        };
+
+        /**
+         * 檢查答案核心邏輯
+         * @param {number} selectedAnswer 選擇的答案
+         * @param {HTMLElement|null} inputElement 輸入框元素或 null
+         * @param {HTMLElement|null} uiContainer 按鈕容器或提交按鈕
+         */
+        async function checkAnswer(selectedAnswer, inputElement, uiContainer) {
             const endTime = performance.now();
             const timeTaken = (endTime - startTime) / 1000; // 用時 (秒)
             
@@ -211,14 +298,18 @@
             if (isCorrect) {
                 score++;
                 feedbackElement.textContent = `答對了！👍 (${currentQuestion.answer})`;
-                // 視覺回饋：變綠
-                inputElement.classList.remove('border-indigo-300', 'border-red-500', 'focus:border-indigo-500');
-                inputElement.classList.add('border-green-500', 'bg-green-50');
+                if (inputElement) {
+                     // 輸入模式的視覺回饋
+                    inputElement.classList.remove('border-indigo-300', 'border-red-500', 'focus:border-indigo-500');
+                    inputElement.classList.add('border-green-500', 'bg-green-50');
+                }
             } else {
                 feedbackElement.textContent = `答錯了... 😥 正確答案是 ${currentQuestion.answer}，您輸入了 ${selectedAnswer}。`;
-                // 視覺回饋：變紅
-                inputElement.classList.remove('border-indigo-300', 'border-green-500', 'focus:border-indigo-500');
-                inputElement.classList.add('border-red-500', 'bg-red-50');
+                if (inputElement) {
+                     // 輸入模式的視覺回饋
+                    inputElement.classList.remove('border-indigo-300', 'border-green-500', 'focus:border-indigo-500');
+                    inputElement.classList.add('border-red-500', 'bg-red-50');
+                }
             }
 
             document.getElementById('current-score').textContent = score;
@@ -228,58 +319,22 @@
             await delay(1500);
 
             // 清理狀態
-            inputElement.classList.remove('border-green-500', 'bg-green-50', 'border-red-500', 'bg-red-50');
-            inputElement.classList.add('border-indigo-300', 'focus:border-indigo-500');
-            inputElement.value = '';
-            
-            inputElement.disabled = false;
-            submitButton.disabled = false;
-            submitButton.classList.remove('opacity-50');
+            if (inputElement && uiContainer) {
+                // 輸入模式的清理
+                inputElement.classList.remove('border-green-500', 'bg-green-50', 'border-red-500', 'bg-red-50');
+                inputElement.classList.add('border-indigo-300', 'focus:border-indigo-500');
+                inputElement.value = '';
+                inputElement.disabled = false;
+                uiContainer.disabled = false;
+                uiContainer.classList.remove('opacity-50');
+            } else if (uiContainer) {
+                // 按鈕模式的清理 (uiContainer 是 button-mode div)
+                Array.from(uiContainer.children).forEach(btn => btn.disabled = false);
+            }
             
             // 進入下一題或總結
             displayQuestion();
         }
-
-        /**
-         * 處理答案提交 (由按鈕或 Enter 鍵觸發)
-         */
-        window.submitAnswer = function() {
-            const inputElement = document.getElementById('answer-input');
-            const submitButton = document.getElementById('submit-button');
-            const inputValue = inputElement.value.trim();
-            const selectedAnswer = parseInt(inputValue);
-
-            // 檢查是否已達到回合限制
-            if (questionCount >= totalQuestionsPerRound) {
-                showSummary();
-                return;
-            }
-
-            // 1. 基礎驗證: 檢查是否為空或非數字
-            if (inputValue === "" || isNaN(selectedAnswer)) {
-                document.getElementById('feedback-message').textContent = "請輸入一個有效的數字！";
-                inputElement.focus();
-                return;
-            }
-            
-            let minRange = 1;
-            let maxRange = quizMode === 'standard' ? maxProduct : maxFactor;
-
-            // 2. 範圍驗證: 顯式檢查數字是否在正確範圍內
-            if (selectedAnswer < minRange || selectedAnswer > maxRange) {
-                document.getElementById('feedback-message').textContent = `請輸入 ${minRange} 到 ${maxRange} 之間的答案！`;
-                inputElement.focus();
-                return;
-            }
-            
-            // 禁用輸入和按鈕 while checking
-            inputElement.disabled = true;
-            submitButton.disabled = true;
-            submitButton.classList.add('opacity-50');
-
-            // 呼叫核心檢查邏輯
-            checkAnswer(selectedAnswer, inputElement, submitButton);
-        };
 
         /**
          * 顯示問題到 UI 上
@@ -293,8 +348,9 @@
             currentQuestion = generateQuestion();
 
             const questionTextElement = document.getElementById('question-text');
+            const inputModeDiv = document.getElementById('input-mode');
+            const buttonModeDiv = document.getElementById('button-mode');
             const inputElement = document.getElementById('answer-input');
-            const submitButton = document.getElementById('submit-button');
             const feedbackElement = document.getElementById('feedback-message');
 
             // Update counter
@@ -304,29 +360,49 @@
             // Display question based on mode
             if (currentQuestion.questionFormat === 'standard') {
                 questionTextElement.textContent = `${currentQuestion.num1} × ${currentQuestion.num2} = ?`;
-                inputElement.setAttribute('max', maxProduct); // 調整輸入框最大值提示
+                // 顯示輸入框模式
+                inputModeDiv.classList.remove('hidden');
+                buttonModeDiv.classList.add('hidden');
+                inputElement.setAttribute('max', maxProduct);
+                inputElement.focus();
             } else {
-                // 使用 '_' 作為佔位符
+                // Inverse mode (A x __ = C)
                 const factor1 = currentQuestion.num1 === null ? '_' : currentQuestion.num1;
                 const factor2 = currentQuestion.num2 === null ? '_' : currentQuestion.num2;
                 const product = currentQuestion.product;
                 questionTextElement.textContent = `${factor1} × ${factor2} = ${product}`;
-                inputElement.setAttribute('max', maxFactor); // 調整輸入框最大值提示
+                // 顯示按鈕模式
+                inputModeDiv.classList.add('hidden');
+                buttonModeDiv.classList.remove('hidden');
+                
+                // 動態生成 1-9 按鈕
+                generateAnswerButtons(buttonModeDiv);
             }
             questionTextElement.classList.remove('hidden');
 
-            // Clear and focus input
-            inputElement.value = '';
-            inputElement.disabled = false;
-            submitButton.disabled = false;
-            submitButton.classList.remove('opacity-50');
-            inputElement.focus();
-            
-            feedbackElement.textContent = ''; // Clear feedback
+            // Clear feedback
+            feedbackElement.textContent = ''; 
 
             // 啟動計時 (僅記錄開始時間)
             startTime = performance.now();
         }
+
+        /**
+         * 生成 1-9 的答案按鈕
+         * @param {HTMLElement} container 按鈕容器
+         */
+        function generateAnswerButtons(container) {
+            container.innerHTML = '';
+            for (let i = 1; i <= 9; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                // 使用優化後的 answer-btn 樣式
+                button.classList.add('answer-btn'); 
+                button.onclick = () => window.submitButtonAnswer(i);
+                container.appendChild(button);
+            }
+        }
+
 
         /**
          * 儲存回合總結到 LocalStorage
@@ -475,9 +551,6 @@
             document.getElementById('question-text').classList.remove('hidden');
             document.getElementById('input-area').classList.remove('hidden');
             
-            // 確保輸入框的 max 屬性正確初始化 (standard=81, inverse=9)
-            document.getElementById('answer-input').setAttribute('max', quizMode === 'standard' ? maxProduct : maxFactor);
-            
             displayQuestion();
         }
 
@@ -489,11 +562,14 @@
             document.getElementById('loading-message').classList.add('hidden');
             showStartScreen(); // 顯示模式選擇畫面
             
-            // 增加 Enter 鍵提交事件監聽器
+            // 增加 Enter 鍵提交事件監聽器 (僅對輸入框模式有效)
             document.getElementById('answer-input').addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault(); 
-                    window.submitAnswer();
+                    // 確保只在輸入模式下呼叫 submitInputAnswer
+                    if (quizMode === 'standard') {
+                        window.submitInputAnswer();
+                    }
                 }
             });
         }
