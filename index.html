@@ -43,7 +43,6 @@
         <h1 class="text-3xl md:text-4xl font-extrabold text-green-600 mb-4">
             乘數表小學堂 (1-9)
         </h1>
-        <!-- 移除使用者 ID 顯示 -->
 
         <!-- 狀態顯示區 -->
         <div class="flex justify-between items-center mb-6 text-lg font-semibold text-gray-700 p-3 bg-green-50 rounded-lg">
@@ -51,11 +50,22 @@
             <span>得分: <span id="current-score">0</span></span>
         </div>
 
-        <!-- 問題區 -->
+        <!-- 問題/開始畫面區 -->
         <div id="question-area" class="mb-8">
             <p id="loading-message" class="text-xl text-green-500">
                 遊戲準備中...
             </p>
+
+            <!-- 新增: 開始畫面 -->
+            <div id="start-screen" class="hidden p-10">
+                <p class="text-2xl md:text-3xl text-gray-700 mb-10 font-medium">
+                    準備好挑戰 1-9 乘數表了嗎？
+                </p>
+                <button id="start-button" onclick="startGame()" class="w-full py-6 px-4 text-3xl font-bold rounded-xl bg-green-600 text-white shadow-lg hover:bg-green-700 transition duration-150 submit-button">
+                    開始測驗
+                </button>
+            </div>
+            
             <p id="question-text" class="hidden text-6xl md:text-8xl font-bold text-green-800 my-8">
                 3 × 5 = ?
             </p>
@@ -84,12 +94,9 @@
 
                 <!-- 新增詳細結果表格區 -->
                 <h3 class="text-xl font-bold text-yellow-700 mt-4 mb-2 border-t pt-4">本次測驗詳細結果</h3>
-                <!-- 移除 h-64 和 overflow-y-auto，讓表格完全展開 -->
                 <div id="detailed-results-table" class="bg-white p-3 rounded mb-6 border border-yellow-300 shadow-inner">
                     <!-- Table will be injected here -->
                 </div>
-
-                <!-- 歷史紀錄區塊已移除 -->
 
                 <button onclick="startGame()" class="w-full py-3 px-4 bg-red-500 text-white font-bold rounded-lg shadow-lg hover:bg-red-600 transition duration-150 submit-button">
                     再玩一次！
@@ -271,7 +278,8 @@
             
             try {
                 localStorage.setItem(localStorageKey, JSON.stringify(historyToSave));
-                console.log("回合結果已成功保存到 LocalStorage。");
+                // 註釋掉 console.log 以保持簡潔
+                // console.log("回合結果已成功保存到 LocalStorage。");
             } catch (error) {
                 console.error("保存結果到 LocalStorage 失敗: ", error);
             }
@@ -279,7 +287,6 @@
 
         /**
          * 從 LocalStorage 載入回合總結
-         * 儘管不再顯示，但儲存邏輯仍需要此函數。
          */
         function loadRoundHistoryLocal() {
             try {
@@ -291,9 +298,6 @@
             }
         }
         
-        // displayLocalHistory() 函數已移除，因為用戶要求取消該欄位。
-
-
         /**
          * 顯示回合總結並保存結果
          */
@@ -369,7 +373,7 @@
 
 
         /**
-         * 初始化遊戲狀態並開始新一輪
+         * 初始化遊戲狀態並開始新一輪 (由按鈕觸發)
          */
         window.startGame = function() {
             score = 0;
@@ -377,8 +381,10 @@
             roundResults = []; // 重置詳細結果
             document.getElementById('feedback-message').textContent = '';
             document.getElementById('summary-modal').classList.add('hidden');
-            document.getElementById('loading-message').classList.add('hidden');
             
+            // 新增: 隱藏開始畫面
+            document.getElementById('start-screen').classList.add('hidden');
+
             // 確保問題和輸入區域顯示
             document.getElementById('question-text').classList.remove('hidden');
             document.getElementById('input-area').classList.remove('hidden');
@@ -390,7 +396,9 @@
          * 應用程式初始化
          */
         function initApp() {
-            document.getElementById('loading-message').textContent = "遊戲準備中！";
+            // 隱藏載入訊息，顯示開始按鈕
+            document.getElementById('loading-message').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
             
             // 增加 Enter 鍵提交事件監聽器
             document.getElementById('answer-input').addEventListener('keypress', function (e) {
@@ -399,9 +407,6 @@
                     window.submitAnswer();
                 }
             });
-            
-            // 延遲開始遊戲
-            setTimeout(startGame, 500);
         }
 
         // 頁面載入完成後開始初始化
